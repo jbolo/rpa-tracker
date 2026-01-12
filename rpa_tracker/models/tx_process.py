@@ -1,3 +1,4 @@
+"""SQLAlchemy model for transaction processes."""
 from sqlalchemy import Column, String, DateTime
 from sqlalchemy.orm import declarative_base
 from datetime import datetime
@@ -16,10 +17,11 @@ class TxProcess(Base):
     error_type = Column(String(20), nullable=True)
     error_description = Column(String(255), nullable=True)
 
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=datetime.now)
+    updated_at = Column(DateTime, nullable=False, default=datetime.now)
 
     def __repr__(self):
+        """String representation of the TxProcess."""
         return (
             f"<TxProcess(uuid={self.uuid}, "
             f"process_code={self.process_code}, "

@@ -4,11 +4,13 @@ max-line-length = 120
 # D107: Ignora docstring en __init__
 # E203: conflicts with autopep8/isort
 # W503: line break before binary operator
+# D101: Ignora docstring en clases públicas
 extend-ignore =
     D107
     E203
     W503
     D104
+    D101
 
 docstring-convention = google
 exclude =

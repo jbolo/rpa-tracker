@@ -1,6 +1,6 @@
+"""SQLAlchemy model for transaction stages."""
 from sqlalchemy import Column, String, DateTime, Integer
 from sqlalchemy.orm import declarative_base
-from datetime import datetime
 
 Base = declarative_base()
 
@@ -22,6 +22,7 @@ class TxStage(Base):
     error_description = Column(String(255), nullable=True)
 
     def __repr__(self):
+        """String representation of the TxStage."""
         return (
             f"<TxStage(uuid={self.uuid}, "
             f"system={self.system}, "

@@ -1,3 +1,4 @@
+"""SQLAlchemy model for transaction events."""
 from sqlalchemy import Column, String, DateTime, Integer, BigInteger
 from sqlalchemy.orm import declarative_base
 from datetime import datetime
@@ -19,10 +20,11 @@ class TxEvent(Base):
     error_code = Column(Integer, nullable=False)
     description = Column(String(255), nullable=True)
 
-    event_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    processed_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    event_at = Column(DateTime, nullable=False, default=datetime.now)
+    processed_at = Column(DateTime, nullable=False, default=datetime.now)
 
     def __repr__(self):
+        """String representation of the TxEvent."""
         return (
             f"<TxEvent(id={self.id}, "
             f"uuid={self.uuid}, "

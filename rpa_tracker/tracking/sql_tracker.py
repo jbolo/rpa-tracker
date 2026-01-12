@@ -1,6 +1,10 @@
+"""SQL-based implementation of the TransactionTracker."""
 import uuid
+from rpa_tracker.enums import TransactionState
+from rpa_tracker.models.tx_process import TxProcess
 from rpa_tracker.tracking.deduplication.registry import DeduplicationRegistry
 from rpa_tracker.tracking.transaction_tracker import TransactionTracker
+from datetime import datetime
 
 
 class SqlTransactionTracker(TransactionTracker):
@@ -9,6 +13,7 @@ class SqlTransactionTracker(TransactionTracker):
         self.session = session
 
     def start_or_resume(self, process_code, data):
+        """Returns (uuid, is_new_transaction)."""
         dedup = DeduplicationRegistry.get(process_code)
         fingerprint = dedup.calculate_fingerprint(data)
 
@@ -22,7 +27,7 @@ class SqlTransactionTracker(TransactionTracker):
                 uuid=uuid_tx,
                 process_code=process_code,
                 state=TransactionState.PENDING,
-                created_at=datetime.utcnow()
+                created_at=datetime.now()
             )
         )
 
