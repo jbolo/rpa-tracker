@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=67.6.1", "wheel"]
+build-backend = "setuptools.build_meta"
+
+
+[project]
+name = "rpa-tracker"
+version = "0.0.1"
+description = "Transaction tracking, deduplication, retry handling and audit trail for Python-based RPA and backend automation."
+readme = "README.md"
+license = "GPL-3.0-only"
+
+authors = [
+    { name = "Jonathan Bolo", email = "jbolo.des@gmail.com" },
+]
+
+requires-python = ">=3.9,<3.13"
+
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Topic :: Utilities",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries",
+    ]
+
+dependencies = [
+    "SQLAlchemy>=1.4,<3.0",
+    "pydantic>=2.5,<3.0",
+]
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=7,<9"
+flake8 = "*"
+flake8-docstrings = ">=1.6.0,<2.0"
+autopep8 = ">=2.3.2"
+mypy = ">=1.18.2"
+twine = ">=4.0.2"
+python-dotenv = ">=1.0"

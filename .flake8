@@ -1,0 +1,20 @@
+[flake8]
+max-line-length = 120
+
+# D107: Ignora docstring en __init__
+# E203: conflicts with autopep8/isort
+# W503: line break before binary operator
+extend-ignore =
+    D107
+    E203
+    W503
+    D104
+
+docstring-convention = google
+exclude =
+    .git,
+    __pycache__,
+    build,
+    dist,
+    src/**/workarounds/*,
+    src/**/drafts/*
