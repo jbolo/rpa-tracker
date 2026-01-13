@@ -1,45 +1,46 @@
 [build-system]
-requires = ["setuptools>=67.6.1", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["poetry-core>=1.0.0", "poetry-dynamic-versioning>=1.0.0,<2.0.0"]
+build-backend = "poetry_dynamic_versioning.backend"
 
-
-[project]
+[tool.poetry]
 name = "rpa-tracker"
-version = "0.0.2"
+version = "0.0.0"  # Placeholder
 description = "Transaction tracking, deduplication, retry handling and audit trail for Python-based RPA and backend automation."
 readme = "README.md"
 license = "GPL-3.0-only"
-
-authors = [
-    { name = "Jonathan Bolo", email = "jbolo.des@gmail.com" },
-]
-
-requires-python = ">=3.9,<3.13"
-
+authors = ["Jonathan Bolo <jbolo.des@gmail.com>"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
     "Topic :: Utilities",
     "Intended Audience :: Developers",
     "Topic :: Software Development :: Libraries",
-    ]
-
-dependencies = [
-    "SQLAlchemy>=1.4,<3.0",
-    "pydantic>=2.5,<3.0",
 ]
+packages = [
+    { include = "rpa_tracker" }
+]
+
+[tool.poetry.dependencies]
+python = ">=3.9,<3.13"
+SQLAlchemy = ">=1.4,<3.0"
+pydantic = ">=2.5,<3.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=7,<9"
+pytest-cov = "*"
 flake8 = "*"
 flake8-docstrings = ">=1.6.0,<2.0"
 autopep8 = ">=2.3.2"
 mypy = ">=1.18.2"
 twine = ">=4.0.2"
 python-dotenv = ">=1.0"
-build = "^1.4.0"
+build = ">=1.4.0"
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["rpa_tracker*"]
-exclude = ["test*", "reports*"]
+[tool.poetry-dynamic-versioning]
+enable = true
+vcs = "git"
+style = "semver"
+pattern = "^v(?P<base>\\d+\\.\\d+\\.\\d+)"
+
+[tool.poetry-dynamic-versioning.substitution]
+files = ["rpa_tracker/__init__.py"]
