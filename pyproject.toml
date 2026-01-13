@@ -60,5 +60,6 @@ no_implicit_optional = false
 module = [
     "sqlalchemy.*",
     "rpa_tracker.models.*",
+    "rpa_tracker.tracking.*",
 ]
 ignore_errors = true
