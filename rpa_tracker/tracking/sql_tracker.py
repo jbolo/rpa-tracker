@@ -11,6 +11,7 @@ from rpa_tracker.tracking.transaction_tracker import TransactionTracker
 from datetime import datetime
 from sqlalchemy.exc import IntegrityError
 from rpa_tracker.constants import DEFAULT_STAGE
+from rpa_tracker.retry.registry import RetryPolicyRegistry
 
 
 class SqlTransactionTracker(TransactionTracker):
@@ -165,9 +166,10 @@ class SqlTransactionTracker(TransactionTracker):
 
         Only stages in PENDING or TERMINATED state are returned, and only if the parent transaction is not REJECTED.
         """
-        return (
+        policy = RetryPolicyRegistry.get(system)
+        query = (
             self.session.query(TxStage)
-            .join(TxProcess, TxProcess.uuid == TxStage.uuid)
+            .join(TxProcess, TxStage.uuid == TxProcess.uuid)
             .filter(
                 TxStage.system == system,
                 TxStage.state.in_(
@@ -175,5 +177,9 @@ class SqlTransactionTracker(TransactionTracker):
                 ),
                 TxProcess.state != TransactionState.REJECTED,
             )
-            .all()
         )
+
+        if policy.max_attempts is not None:
+            query = query.filter(TxStage.attempt < policy.max_attempts)
+
+        return query.all()

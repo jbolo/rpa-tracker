@@ -8,6 +8,8 @@
 from datetime import datetime, timedelta
 import logging
 
+from rpa_tracker.catalog.platform import PlatformDefinition
+from rpa_tracker.catalog.registry import PlatformRegistry
 from rpa_tracker.tracking.sql_tracker import SqlTransactionTracker
 from rpa_tracker.tracking.deduplication.registry import DeduplicationRegistry
 from rpa_tracker.domain.execution_result import ExecutionResult
@@ -20,20 +22,53 @@ from test.domain.cancel_payload import CancelacionPayload
 from test.tracking.fake_deduplication import CancelacionDeduplication
 from test.infra.models.data_repository import DataRepository
 
+from rpa_tracker.retry.policy import RetryPolicy
+
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 
-def test_complex_transaction_flow_with_retries_and_report(session):
+def test_complex_transaction_flow_with_platform_retry_and_report(session):
     """Complex end-to-end flow with retries and final report."""
-    # --- Setup ---
+    # =========================================================
+    # BOOTSTRAP
+    # =========================================================
     data_repo = DataRepository(session)
-    dedup = CancelacionDeduplication(data_repo)
-    DeduplicationRegistry.register("COMPLEX_PROC", dedup)
+
+    DeduplicationRegistry.register(
+        "COMPLEX_PROC",
+        CancelacionDeduplication(data_repo),
+    )
+
+    PlatformRegistry.register(
+        PlatformDefinition(
+            code="A",
+            retry_policy=RetryPolicy(max_attempts=1),
+            order=1,
+        )
+    )
+
+    PlatformRegistry.register(
+        PlatformDefinition(
+            code="B",
+            retry_policy=RetryPolicy(max_attempts=2),
+            order=2,
+        )
+    )
+
+    PlatformRegistry.register(
+        PlatformDefinition(
+            code="C",
+            retry_policy=RetryPolicy(),  # unlimited
+            order=3,
+        )
+    )
 
     tracker = SqlTransactionTracker(session)
 
-    # --- Payloads ---
+    # =========================================================
+    # TRANSACTIONS
+    # =========================================================
     payloads = [
         CancelacionPayload(
             requerimiento="FE-0001",
@@ -54,65 +89,67 @@ def test_complex_transaction_flow_with_retries_and_report(session):
 
     uuids = []
 
-    # --- Register transactions and stages ---
     for payload in payloads:
-        uuid, _ = tracker.start_or_resume("COMPLEX_PROC", payload)
+        uuid, is_new = tracker.start_or_resume("COMPLEX_PROC", payload)
+        assert is_new
         uuids.append(uuid)
 
-        tracker.start_stage(uuid, "A")
-        tracker.start_stage(uuid, "B")
-        tracker.start_stage(uuid, "C")
+        # Register stages using catalog
+        for platform in PlatformRegistry.all():
+            tracker.start_stage(uuid, platform.code)
 
     # =========================================================
-    # Platform A
+    # PLATFORM A
     # =========================================================
-    pending_a = tracker.get_pending_stages("A")
+    platform = PlatformRegistry.get("A")
+    pending_a = tracker.get_pending_stages(platform.code)
     assert len(pending_a) == 3
 
     for stage in pending_a:
         data = data_repo.get_by_uuid(stage.uuid)
 
         if data.requerimiento == "FE-0001":
-            result = ExecutionResult(error_code=3)      # business error
+            result = ExecutionResult(error_code=3)   # business error
         else:
-            result = ExecutionResult(error_code=0)      # OK
+            result = ExecutionResult(error_code=0)   # OK
 
-        tracker.log_event(stage.uuid, "A", result.error_code, result.description)
+        tracker.log_event(stage.uuid, platform.code, result.error_code, result.description)
         tracker.finish_stage(
             stage.uuid,
-            "A",
+            platform.code,
             result.state,
             result.error_type,
             result.description,
         )
 
     # =========================================================
-    # Platform B
+    # PLATFORM B
     # =========================================================
-    pending_b = tracker.get_pending_stages("B")
-    assert len(pending_b) == 2  # TX_FAIL_A must not be here
+    platform = PlatformRegistry.get("B")
+    pending_b = tracker.get_pending_stages(platform.code)
+    assert len(pending_b) == 2  # TX_FAIL_A is excluded
 
     for stage in pending_b:
         data = data_repo.get_by_uuid(stage.uuid)
 
         if data.requerimiento == "FE-0002":
-            # retry 1 → system error
+            # attempt 1 -> system error (retry allowed)
             result1 = ExecutionResult(error_code=-2)
-            tracker.log_event(stage.uuid, "B", result1.error_code, result1.description)
+            tracker.log_event(stage.uuid, platform.code, result1.error_code, result1.description)
             tracker.finish_stage(
                 stage.uuid,
-                "B",
+                platform.code,
                 result1.state,
                 result1.error_type,
                 result1.description,
             )
 
-            # retry 2 → business error
+            # attempt 2 -> business error (retry limit reached)
             result2 = ExecutionResult(error_code=1)
-            tracker.log_event(stage.uuid, "B", result2.error_code, result2.description)
+            tracker.log_event(stage.uuid, platform.code, result2.error_code, result2.description)
             tracker.finish_stage(
                 stage.uuid,
-                "B",
+                platform.code,
                 result2.state,
                 result2.error_type,
                 result2.description,
@@ -121,27 +158,28 @@ def test_complex_transaction_flow_with_retries_and_report(session):
         else:
             # TX_OK_ALL
             result = ExecutionResult(error_code=0)
-            tracker.log_event(stage.uuid, "B", result.error_code, result.description)
+            tracker.log_event(stage.uuid, platform.code, result.error_code, result.description)
             tracker.finish_stage(
                 stage.uuid,
-                "B",
+                platform.code,
                 result.state,
                 result.error_type,
                 result.description,
             )
 
     # =========================================================
-    # Platform C
+    # PLATFORM C
     # =========================================================
-    pending_c = tracker.get_pending_stages("C")
+    platform = PlatformRegistry.get("C")
+    pending_c = tracker.get_pending_stages(platform.code)
     assert len(pending_c) == 1  # only TX_OK_ALL
 
     stage = pending_c[0]
     result = ExecutionResult(error_code=0)
-    tracker.log_event(stage.uuid, "C", result.error_code, result.description)
+    tracker.log_event(stage.uuid, platform.code, result.error_code, result.description)
     tracker.finish_stage(
         stage.uuid,
-        "C",
+        platform.code,
         result.state,
         result.error_type,
         result.description,
@@ -167,7 +205,7 @@ def test_complex_transaction_flow_with_retries_and_report(session):
     for state, count in summary:
         log.info("  %-10s : %s", state, count)
 
-    log.info("SUMMARY BY SYSTEM / STATE")
+    log.info("SUMMARY BY PLATFORM / STATE")
     for system, state, count in stage_summary:
         log.info("  SYSTEM=%s | STATE=%s | COUNT=%s", system, state, count)
 
@@ -178,6 +216,6 @@ def test_complex_transaction_flow_with_retries_and_report(session):
     # =========================================================
     states = {tx.uuid: tx.state for tx in txs}
 
-    assert states[uuids[0]] == TransactionState.REJECTED      # FE-0001
-    assert states[uuids[1]] == TransactionState.REJECTED      # FE-0002
-    assert states[uuids[2]] == TransactionState.COMPLETED     # FE-0003
+    assert states[uuids[0]] == TransactionState.REJECTED     # FE-0001
+    assert states[uuids[1]] == TransactionState.REJECTED     # FE-0002
+    assert states[uuids[2]] == TransactionState.COMPLETED    # FE-0003
