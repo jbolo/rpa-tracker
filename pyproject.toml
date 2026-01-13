@@ -22,8 +22,8 @@ packages = [
 
 [tool.poetry.dependencies]
 python = ">=3.9,<3.13"
-SQLAlchemy = ">=1.4,<3.0"
 pydantic = ">=2.5,<3.0"
+sqlalchemy = "^2.0.45"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=7,<9"
@@ -35,6 +35,8 @@ mypy = ">=1.18.2"
 twine = ">=4.0.2"
 python-dotenv = ">=1.0"
 build = ">=1.4.0"
+sqlalchemy = {extras = ["mypy"], version = "^2.0.45"}
+types-python-dateutil = "^2.9.0.20251115"
 
 [tool.poetry-dynamic-versioning]
 enable = true
