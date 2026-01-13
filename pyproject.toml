@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rpa-tracker"
-version = "0.0.1"
+version = "0.0.2"
 description = "Transaction tracking, deduplication, retry handling and audit trail for Python-based RPA and backend automation."
 readme = "README.md"
 license = "GPL-3.0-only"
