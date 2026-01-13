@@ -4,7 +4,7 @@
 class TransactionState:
     PENDING = "PENDING"
     COMPLETED = "COMPLETED"
-    FAILED = "TERMINATED"          # system error (retryable)
+    TERMINATED = "TERMINATED"          # system error (retryable)
     REJECTED = "REJECTED"      # business error (non-retryable)
 
 

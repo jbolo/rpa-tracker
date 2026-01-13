@@ -1,37 +1,34 @@
-"""Domain model for execution result representation."""
-from pydantic import BaseModel, field_validator
+"""Domain model for execution results in RPA tracker."""
+from pydantic import BaseModel, model_validator
 from typing import Optional
+
+from rpa_tracker.enums import TransactionState, ErrorType
 
 
 class ExecutionResult(BaseModel):
     error_code: int
     description: Optional[str] = None
 
-    state: str = None
+    state: Optional[str] = None
     error_type: Optional[str] = None
-    retryable: bool = None
+    retryable: Optional[bool] = None
 
-    @field_validator("state", mode="before")
-    @classmethod
-    def resolve_state(cls, _, info):
-        code = info.data["error_code"]
-        if code == 0:
-            return "COMPLETED"
-        elif code > 0:
-            return "REJECTED"
-        return "FAILED"
+    @model_validator(mode="after")
+    def compute_derived_fields(self):
+        """Compute derived fields based on error_code."""
+        if self.error_code == 0:
+            self.state = TransactionState.COMPLETED
+            self.error_type = None
+            self.retryable = True
 
-    @field_validator("error_type", mode="before")
-    @classmethod
-    def resolve_error_type(cls, _, info):
-        code = info.data["error_code"]
-        if code > 0:
-            return "BUSINESS"
-        elif code < 0:
-            return "SYSTEM"
-        return None
+        elif self.error_code > 0:
+            self.state = TransactionState.REJECTED
+            self.error_type = ErrorType.BUSINESS
+            self.retryable = False
 
-    @field_validator("retryable", mode="before")
-    @classmethod
-    def resolve_retryable(cls, _, info):
-        return info.data["error_code"] <= 0
+        else:
+            self.state = TransactionState.TERMINATED
+            self.error_type = ErrorType.SYSTEM
+            self.retryable = True
+
+        return self

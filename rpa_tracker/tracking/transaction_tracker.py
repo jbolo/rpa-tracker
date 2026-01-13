@@ -1,6 +1,6 @@
 """Abstract base class for transaction tracking implementations."""
 from abc import ABC, abstractmethod
-from typing import Tuple
+from typing import Any, Optional, Tuple
 
 
 class TransactionTracker(ABC):
@@ -9,12 +9,12 @@ class TransactionTracker(ABC):
     def start_or_resume(
         self,
         process_code: str,
-        data: dict
+        payload: Any
     ) -> Tuple[str, bool]:
         """Returns (uuid, is_new_transaction)."""
 
     @abstractmethod
-    def start_stage(self, uuid: str, system: str, stage: str):
+    def start_stage(self, uuid: str, system: str, stage: Optional[str] = None) -> None:
         """Start a new stage for the given transaction."""
 
     @abstractmethod
@@ -22,10 +22,10 @@ class TransactionTracker(ABC):
         self,
         uuid: str,
         system: str,
-        stage: str,
         attempt: int,
         error_code: int,
-        description: str | None
+        description: Optional[str],
+        stage: Optional[str] = None,
     ):
         """Log an event for the given transaction."""
         ...
@@ -35,10 +35,10 @@ class TransactionTracker(ABC):
         self,
         uuid: str,
         system: str,
-        stage: str,
         state: str,
-        error_type: str | None,
-        description: str | None
-    ):
+        error_type: Optional[str],
+        description: Optional[str],
+        stage: Optional[str] = None,
+    ) -> None:
         """Finalize a stage for the given transaction."""
         ...

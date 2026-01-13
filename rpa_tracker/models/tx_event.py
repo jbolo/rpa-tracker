@@ -1,5 +1,5 @@
 """SQLAlchemy model for transaction events."""
-from sqlalchemy import Column, String, DateTime, Integer, BigInteger
+from sqlalchemy import Column, String, DateTime, Integer
 from sqlalchemy.orm import declarative_base
 from datetime import datetime
 
@@ -9,7 +9,7 @@ Base = declarative_base()
 class TxEvent(Base):
     __tablename__ = "RPA_TX_EVENT"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
 
     uuid = Column(String(36), nullable=False)
     system = Column(String(50), nullable=False)
