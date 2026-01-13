@@ -30,10 +30,12 @@ jobs:
           file: ./coverage.xml
 
   publish:
-    needs: test  # 👈 Solo publica si los tests pasan
+    needs: test
     runs-on: ubuntu-latest
+    environment: release  # 👈 Opcional: añade protección
     permissions:
       id-token: write
+      contents: read
     
     steps:
       - uses: actions/checkout@v4
