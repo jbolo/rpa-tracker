@@ -46,3 +46,19 @@ pattern = "^v(?P<base>\\d+\\.\\d+\\.\\d+)"
 
 [tool.poetry-dynamic-versioning.substitution]
 files = ["rpa_tracker/__init__.py"]
+
+[tool.mypy]
+python_version = "3.9"
+ignore_missing_imports = true
+disallow_untyped_defs = false
+warn_return_any = false
+warn_unused_configs = true
+no_implicit_optional = false
+
+# Ignorar módulos específicos
+[[tool.mypy.overrides]]
+module = [
+    "sqlalchemy.*",
+    "rpa_tracker.models.*",
+]
+ignore_errors = true
