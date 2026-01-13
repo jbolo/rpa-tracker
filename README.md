@@ -170,4 +170,4 @@ Senior Software & RPA Architect
 
 ---
 
-[![JBoloDev](https://raw.githubusercontent.com/jbolo/rpa-tracker/main/ext/jbolodev.png)](https://jbolo.dev)
+[![JBoloDev](https://raw.githubusercontent.com/jbolo/rpa-tracker/refs/heads/master/ext/jbolodev.png)](https://jbolo.dev)
