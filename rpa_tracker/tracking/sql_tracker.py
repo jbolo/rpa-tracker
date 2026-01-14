@@ -141,7 +141,7 @@ class SqlTransactionTracker(TransactionTracker):
         self.session.commit()
 
     def get_executable_stages(self, uuid: str) -> list[TxStage]:
-        """Returns stages that can be executed (PENDING or FAILED).
+        """Returns stages that can be executed (PENDING or REJECTED).
 
         Unless the transaction is already REJECTED.
         """
@@ -155,16 +155,20 @@ class SqlTransactionTracker(TransactionTracker):
             .filter(
                 TxStage.uuid == uuid,
                 TxStage.state.in_(
-                    [TransactionState.PENDING, TransactionState.FAILED]
+                    [TransactionState.PENDING, TransactionState.REJECTED]
                 )
             )
             .all()
         )
 
-    def get_pending_stages(self, system: str):
+    def get_pending_stages(self, system: str, stage: Optional[str] = None):
         """Returns stages that are eligible for execution for a given system.
 
         Only stages in PENDING or TERMINATED state are returned, and only if the parent transaction is not REJECTED.
+
+        Args:
+            system: Platform system code
+            stage: Optional stage name to filter by specific stage
         """
         policy = RetryPolicyRegistry.get(system)
         query = (
@@ -178,6 +182,10 @@ class SqlTransactionTracker(TransactionTracker):
                 TxProcess.state != TransactionState.REJECTED,
             )
         )
+
+        # 👇 NUEVO: Filtrar por stage si se proporciona
+        if stage is not None:
+            query = query.filter(TxStage.stage == stage)
 
         if policy.max_attempts is not None:
             query = query.filter(TxStage.attempt < policy.max_attempts)
