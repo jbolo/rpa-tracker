@@ -117,6 +117,43 @@ uuid, is_new = tracker.start_or_resume("MY_PROCESS", payload)
 - Retry limits are **platform-specific**
 - Unlimited retries are supported
 
+
+---
+
+## Transaction Management
+
+**Important:** `rpa-tracker` does NOT commit automatically. 
+You control when to commit.
+
+### Pattern 1: Commit per transaction
+```python
+for case in cases:
+    tracker.finish_stage(uuid, system, state)
+    session.commit()  # Commit each
+```
+
+### Pattern 2: Commit per batch (recommended)
+```python
+for i, case in enumerate(cases):
+    tracker.finish_stage(uuid, system, state)
+    
+    if i % 100 == 0:
+        session.commit()  # Commit every 100
+
+session.commit()  # Final commit
+```
+
+### Pattern 3: Single transaction
+```python
+try:
+    for case in cases:
+        tracker.finish_stage(uuid, system, state)
+    
+    session.commit()  # All or nothing
+except Exception:
+    session.rollback()
+```
+
 ---
 
 ## Reporting

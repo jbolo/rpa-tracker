@@ -142,6 +142,8 @@ def test_complex_transaction_flow_with_platform_retry_and_report(session):
             stage=stage_name,
         )
 
+        session.commit()
+
     # =========================================================
     # PLATFORM B - Stage 1: "procesar"
     # =========================================================
@@ -177,6 +179,8 @@ def test_complex_transaction_flow_with_platform_retry_and_report(session):
                 stage=stage_name,
             )
 
+            session.commit()
+
             # attempt 2 -> business error (retry limit reached)
             result2 = ExecutionResult(error_code=1)
             log.info("  [%s] %s -> BUSINESS ERROR attempt 2 (rejected)", stage_name, data.nombre)
@@ -195,6 +199,8 @@ def test_complex_transaction_flow_with_platform_retry_and_report(session):
                 result2.description,
                 stage=stage_name,
             )
+
+            session.commit()
 
         else:
             # TX_OK_ALL
@@ -215,6 +221,8 @@ def test_complex_transaction_flow_with_platform_retry_and_report(session):
                 result.description,
                 stage=stage_name,
             )
+
+            session.commit()
 
     # =========================================================
     # PLATFORM B - Stage 2: "confirmar"
@@ -249,6 +257,8 @@ def test_complex_transaction_flow_with_platform_retry_and_report(session):
             stage=stage_name,
         )
 
+        session.commit()
+
     # =========================================================
     # PLATFORM C - Default stage
     # =========================================================
@@ -282,6 +292,8 @@ def test_complex_transaction_flow_with_platform_retry_and_report(session):
         result.description,
         stage=stage_name,
     )
+
+    session.commit()
 
     # =========================================================
     # REPORT
