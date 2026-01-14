@@ -52,3 +52,30 @@ class TransactionReportRepository:
             .group_by(TxStage.system, TxStage.state)
             .all()
         )
+
+    def stage_summary_by_system_and_stage(
+        self,
+        start: datetime,
+        end: datetime,
+    ) -> list[tuple[str, str, str, int]]:
+        """Return summary of stages by system, stage name, and state.
+
+        Returns:
+            List of tuples: (system, stage, state, count)
+        """
+        return (
+            self.session.query(
+                TxStage.system,
+                TxStage.stage,
+                TxStage.state,
+                func.count().label("count"),
+            )
+            .join(TxProcess, TxStage.uuid == TxProcess.uuid)
+            .filter(
+                TxProcess.created_at >= start,
+                TxProcess.created_at <= end,
+            )
+            .group_by(TxStage.system, TxStage.stage, TxStage.state)
+            .order_by(TxStage.system, TxStage.stage, TxStage.state)
+            .all()
+        )
