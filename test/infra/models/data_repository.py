@@ -1,4 +1,5 @@
 """Repository for transaction data management."""
+from typing import Optional
 from test.domain.cancel_payload import CancelacionPayload
 from test.infra.models.tx_data import TxData
 from sqlalchemy.orm import Session
@@ -26,4 +27,12 @@ class DataRepository:
             self.session.query(TxData)
             .filter_by(uuid=uuid)
             .one()
+        )
+
+    def find_by_requerimiento(self, requerimiento: str) -> Optional[TxData]:
+        """Find transaction by requerimiento field."""
+        return (
+            self.session.query(TxData)
+            .filter_by(requerimiento=requerimiento)
+            .first()
         )
