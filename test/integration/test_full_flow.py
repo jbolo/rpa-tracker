@@ -38,7 +38,6 @@ def test_full_transaction_flow(session: Session):
     PlatformRegistry.register(
         PlatformDefinition(
             code="A",
-            stages=("default",),
             retry_policy=RetryPolicy(max_attempts=1),
             order=1,
         )
@@ -47,7 +46,6 @@ def test_full_transaction_flow(session: Session):
     PlatformRegistry.register(
         PlatformDefinition(
             code="B",
-            stages=("default",),
             retry_policy=RetryPolicy(max_attempts=1),
             order=2,
         )
@@ -56,7 +54,6 @@ def test_full_transaction_flow(session: Session):
     PlatformRegistry.register(
         PlatformDefinition(
             code="C",
-            stages=("default",),
             retry_policy=RetryPolicy(max_attempts=1),
             order=3,
         )

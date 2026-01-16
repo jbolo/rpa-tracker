@@ -15,3 +15,8 @@ class RetryPolicyRegistry:
     def get(cls, system: str) -> RetryPolicy:
         """Retrieve the retry policy for a given external system."""
         return cls._policies.get(system, RetryPolicy())
+
+    @classmethod
+    def clear(cls) -> None:
+        """Clear all registered policies (for testing)."""
+        cls._policies.clear()

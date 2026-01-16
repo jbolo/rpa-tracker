@@ -23,3 +23,8 @@ class PlatformRegistry:
             cls._platforms.values(),
             key=lambda p: p.order
         )
+
+    @classmethod
+    def clear(cls):
+        """Clear all registered platforms (for testing)."""
+        cls._platforms.clear()

@@ -18,3 +18,8 @@ class DeduplicationRegistry:
     def get(cls, process_code: str) -> Optional[DeduplicationStrategy]:
         """Retrieve the deduplication strategy for a given process code."""
         return cls._registry[process_code]
+
+    @classmethod
+    def clear(cls) -> None:
+        """Clear all registered strategies (for testing)."""
+        cls._registry.clear()
