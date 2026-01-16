@@ -1,6 +1,6 @@
 """Repository for transaction reports."""
 from datetime import datetime
-from sqlalchemy import Row, func
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from rpa_tracker.models.tx_process import TxProcess
 from rpa_tracker.models.tx_stage import TxStage
@@ -21,7 +21,7 @@ class TransactionReportRepository:
             .all()
         )
 
-    def summary_by_state(self, start: datetime, end: datetime) -> list[Row[tuple[str, int]]]:
+    def summary_by_state(self, start: datetime, end: datetime):
         """Returns count of transactions grouped by state."""
         return (
             self.session.query(
@@ -36,7 +36,7 @@ class TransactionReportRepository:
             .all()
         )
 
-    def stage_summary_by_system(self, start: datetime, end: datetime) -> list[Row[tuple[str, str, int]]]:
+    def stage_summary_by_system(self, start: datetime, end: datetime):
         """Returns count of stages per system and state."""
         return (
             self.session.query(
@@ -57,7 +57,7 @@ class TransactionReportRepository:
         self,
         start: datetime,
         end: datetime,
-    ) -> list[Row[tuple[str, str, str, int]]]:
+    ):
         """Return summary of stages by system, stage name, and state.
 
         Returns:
