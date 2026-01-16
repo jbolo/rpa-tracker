@@ -9,8 +9,8 @@ class ExecutionResult(BaseModel):
     error_code: int
     description: Optional[str] = None
 
-    state: Optional[str] = None
-    error_type: Optional[str] = None
+    state: Optional[TransactionState] = None
+    error_type: Optional[ErrorType] = None
     retryable: Optional[bool] = None
 
     @model_validator(mode="after")

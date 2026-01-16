@@ -10,6 +10,7 @@ import logging
 
 from rpa_tracker.catalog.platform import PlatformDefinition
 from rpa_tracker.catalog.registry import PlatformRegistry
+from rpa_tracker.models.tx_event import TxEvent
 from rpa_tracker.tracking.sql_tracker import SqlTransactionTracker
 from rpa_tracker.tracking.deduplication.registry import DeduplicationRegistry
 from rpa_tracker.domain.execution_result import ExecutionResult
@@ -332,13 +333,23 @@ def test_complex_transaction_flow_with_platform_retry_and_report(session):
     # =========================================================
     states = {tx.uuid: tx.state for tx in txs}
 
-    assert states[uuids[0]] == TransactionState.REJECTED     # FE-0001 (failed at A.validar)
-    assert states[uuids[1]] == TransactionState.REJECTED     # FE-0002 (failed at B.procesar)
-    assert states[uuids[2]] == TransactionState.COMPLETED    # FE-0003 (completed all stages)
+    assert states[uuids[0]] == TransactionState.REJECTED.value     # FE-0001 (failed at A.validar)
+    assert states[uuids[1]] == TransactionState.REJECTED.value     # FE-0002 (failed at B.procesar)
+    assert states[uuids[2]] == TransactionState.COMPLETED.value    # FE-0003 (completed all stages)
 
     # Verify stage counts
     summary_dict = {state: count for state, count in summary}  # Convertir a dict
     assert summary_dict["REJECTED"] == 2  # 👈 String directo
     assert summary_dict["COMPLETED"] == 1  # 👈 String directo
 
+    # Verify intermediate states were tracked
+    events_tx3 = (
+        session.query(TxEvent)
+        .filter_by(uuid=uuids[2])
+        .order_by(TxEvent.event_at)
+        .all()
+    )
+
+    # Should have events from A, B.procesar, B.confirmar, C
+    assert len(events_tx3) >= 4
     log.info("\n✅ All assertions passed!")

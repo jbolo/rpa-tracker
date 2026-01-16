@@ -1,8 +1,9 @@
 """SQL-based implementation of the TransactionTracker."""
 import uuid
-from typing import Any, Optional, Tuple
+from typing import Any, List, Optional, Tuple
+from sqlalchemy import func
 from sqlalchemy.orm import Session
-from rpa_tracker.enums import TransactionState
+from rpa_tracker.enums import TransactionState, ErrorType
 from rpa_tracker.models.tx_event import TxEvent
 from rpa_tracker.models.tx_process import TxProcess
 from rpa_tracker.models.tx_stage import TxStage
@@ -19,7 +20,9 @@ class SqlTransactionTracker(TransactionTracker):
     def __init__(self, session: Session):
         self.session = session
 
-    def start_or_resume(self, process_code: str, payload: Any) -> Tuple[str, bool]:
+    def start_or_resume(self,
+                        process_code: str,
+                        payload: Any) -> Tuple[str, bool]:
         """Returns (uuid, is_new_transaction)."""
         dedup = DeduplicationRegistry.get(process_code)
         fingerprint = dedup.calculate_fingerprint(payload)
@@ -33,7 +36,7 @@ class SqlTransactionTracker(TransactionTracker):
             TxProcess(
                 uuid=uuid_tx,
                 process_code=process_code,
-                state=TransactionState.PENDING,
+                state=TransactionState.PENDING.value,
                 created_at=datetime.now()
             )
         )
@@ -46,9 +49,11 @@ class SqlTransactionTracker(TransactionTracker):
             self.session.rollback()
             return dedup.find_existing_uuid(fingerprint), False
 
-    def start_stage(self, uuid: str, system: str, stage: Optional[str] = None) -> None:
+    def start_stage(self,
+                    uuid: str,
+                    system: str,
+                    stage: str = DEFAULT_STAGE) -> None:
         """Registers the start of a stage for a transaction."""
-        stage = stage or DEFAULT_STAGE
         existing = (
             self.session.query(TxStage)
             .filter_by(uuid=uuid, system=system, stage=stage)
@@ -63,7 +68,7 @@ class SqlTransactionTracker(TransactionTracker):
                 uuid=uuid,
                 system=system,
                 stage=stage,
-                state=TransactionState.PENDING,
+                state=TransactionState.PENDING.value,
                 attempt=0,
                 last_attempt_at=None,
                 error_type=None,
@@ -78,10 +83,9 @@ class SqlTransactionTracker(TransactionTracker):
         system: str,
         error_code: int,
         description: Optional[str],
-        stage: Optional[str] = None
-    ):
+        stage: str = DEFAULT_STAGE
+    ) -> None:
         """Logs an event for a transaction stage."""
-        stage = stage or DEFAULT_STAGE
         stage_row = (
             self.session.query(TxStage)
             .filter_by(uuid=uuid, system=system, stage=stage)
@@ -109,38 +113,97 @@ class SqlTransactionTracker(TransactionTracker):
         self,
         uuid: str,
         system: str,
-        state: str,
-        error_type: Optional[str],
-        description: Optional[str],
-        stage: Optional[str] = None
-    ):
-        """Marks a transaction stage as finished and updates global transaction state."""
-        stage = stage or DEFAULT_STAGE
-        stage_row = (
+        state: TransactionState,
+        error_type: Optional[ErrorType] = None,
+        description: Optional[str] = None,
+        stage: str = DEFAULT_STAGE
+    ) -> None:
+        """Finish a stage and update process state accordingly.
+
+        Logic:
+        - COMPLETED stage -> Check if all stages completed -> Update process
+        - REJECTED stage -> Update process to REJECTED (stop flow)
+        - TERMINATED stage -> Update process to TERMINATED (retry later)
+        """
+        # Update stage
+        stage_obj = (
             self.session.query(TxStage)
             .filter_by(uuid=uuid, system=system, stage=stage)
             .one()
         )
 
-        stage_row.state = state
-        stage_row.error_type = error_type
-        stage_row.error_description = description
-        stage_row.attempt += 1
-        stage_row.last_attempt_at = datetime.now()
+        stage_obj.state = state.value
+        stage_obj.error_type = error_type.value if error_type else None
+        stage_obj.error_description = description
 
-        # 🔴 NUEVO: actualizar estado global del proceso
-        process = (
-            self.session.query(TxProcess)
-            .filter_by(uuid=uuid)
-            .one()
-        )
-
-        process.state = state
-        process.updated_at = datetime.now()
+        # 👇 NUEVA LÓGICA: Actualizar proceso según estado del stage
+        self._update_process_state(uuid, state, error_type, description)
 
         self.session.commit()
 
-    def get_executable_stages(self, uuid: str) -> list[TxStage]:
+    def _update_process_state(
+        self,
+        uuid: str,
+        stage_state: TransactionState,
+        error_type: Optional[ErrorType],
+        description: Optional[str],
+    ) -> None:
+        """Update process state based on stage completion.
+
+        Rules:
+        1. REJECTED stage -> Process becomes REJECTED (stop)
+        2. TERMINATED stage -> Process becomes TERMINATED (retry)
+        3. COMPLETED stage -> Check all stages:
+           - All completed -> Process COMPLETED
+           - Any pending -> Process stays IN_PROGRESS
+        """
+        process = self.session.query(TxProcess).filter_by(uuid=uuid).one()
+
+        if stage_state == TransactionState.REJECTED:
+            # Business error -> Stop process
+            process.state = TransactionState.REJECTED.value
+            process.error_type = error_type.value if error_type else None
+            process.error_description = description
+
+        elif stage_state == TransactionState.TERMINATED:
+            # System error -> Mark for retry (only if not already rejected)
+            if process.state != TransactionState.REJECTED.value:
+                process.state = TransactionState.TERMINATED.value
+                process.error_type = error_type.value if error_type else None
+                process.error_description = description
+
+        elif stage_state == TransactionState.COMPLETED:
+            # Check if all stages are completed
+            all_stages_completed = self._are_all_stages_completed(uuid)
+
+            if all_stages_completed:
+                # All stages completed -> Process completed
+                process.state = TransactionState.COMPLETED.value
+                process.error_type = None
+                process.error_description = None
+            else:
+                # Still has pending stages -> Keep as IN_PROGRESS
+                if process.state == TransactionState.PENDING.value:
+                    process.state = TransactionState.IN_PROGRESS.value
+
+    def _are_all_stages_completed(self, uuid: str) -> bool:
+        """Check if all stages for a transaction are completed."""
+        # Count pending stages
+        pending_count = (
+            self.session.query(func.count(TxStage.uuid))
+            .filter(
+                TxStage.uuid == uuid,
+                TxStage.state.in_([
+                    TransactionState.PENDING.value,
+                    TransactionState.IN_PROGRESS.value,
+                ])
+            )
+            .scalar()
+        )
+
+        return pending_count == 0
+
+    def get_executable_stages(self, uuid: str) -> List[TxStage]:
         """Returns stages that can be executed (PENDING or REJECTED).
 
         Unless the transaction is already REJECTED.
@@ -161,7 +224,9 @@ class SqlTransactionTracker(TransactionTracker):
             .all()
         )
 
-    def get_pending_stages(self, system: str, stage: Optional[str] = None):
+    def get_pending_stages(self,
+                           system: str,
+                           stage: str = DEFAULT_STAGE) -> List[TxStage]:
         """Returns stages that are eligible for execution for a given system.
 
         Only stages in PENDING or TERMINATED state are returned, and only if the parent transaction is not REJECTED.
@@ -176,16 +241,15 @@ class SqlTransactionTracker(TransactionTracker):
             .join(TxProcess, TxStage.uuid == TxProcess.uuid)
             .filter(
                 TxStage.system == system,
-                TxStage.state.in_(
-                    [TransactionState.PENDING, TransactionState.TERMINATED]
-                ),
-                TxProcess.state != TransactionState.REJECTED,
+                TxStage.stage == stage,
+                TxStage.state == TransactionState.PENDING.value,
+                TxProcess.state.in_([
+                    TransactionState.PENDING.value,
+                    TransactionState.IN_PROGRESS.value,
+                    TransactionState.TERMINATED.value,  # 👈 Include for retry
+                ])
             )
         )
-
-        # 👇 NUEVO: Filtrar por stage si se proporciona
-        if stage is not None:
-            query = query.filter(TxStage.stage == stage)
 
         if policy.max_attempts is not None:
             query = query.filter(TxStage.attempt < policy.max_attempts)
