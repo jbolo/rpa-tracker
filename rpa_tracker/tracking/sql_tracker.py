@@ -134,7 +134,10 @@ class SqlTransactionTracker(TransactionTracker):
                 TxStage.uuid == uuid,
                 TxStage.system == system,
                 TxStage.stage == stage,
-                TxStage.state == TransactionState.PENDING.value  # 👈 Verify still pending
+                TxStage.state.in_([
+                    TransactionState.PENDING.value,
+                    TransactionState.TERMINATED.value
+                ])
             )
             .update(
                 {
