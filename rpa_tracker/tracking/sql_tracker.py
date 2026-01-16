@@ -127,18 +127,32 @@ class SqlTransactionTracker(TransactionTracker):
         - REJECTED stage -> Update process to REJECTED (stop flow)
         - TERMINATED stage -> Update process to TERMINATED (retry later)
         """
-        # Update stage
-        stage_obj = (
+        # Optimistic update: only update if still PENDING
+        updated = (
             self.session.query(TxStage)
-            .filter_by(uuid=uuid, system=system, stage=stage)
-            .one()
+            .filter(
+                TxStage.uuid == uuid,
+                TxStage.system == system,
+                TxStage.stage == stage,
+                TxStage.state == TransactionState.PENDING.value  # 👈 Verify still pending
+            )
+            .update(
+                {
+                    "state": state.value,
+                    "error_type": error_type.value if error_type else None,
+                    "error_description": description,
+                    "last_attempt_at": datetime.now(),
+                    "attempt": TxStage.attempt + 1  # Increment attempt
+                },
+                synchronize_session=False
+            )
         )
 
-        stage_obj.state = state.value
-        stage_obj.error_type = error_type.value if error_type else None
-        stage_obj.error_description = description
+        if updated == 0:
+            # Another worker already processed this stage
+            # This is normal in concurrent scenarios, just skip
+            return
 
-        # 👇 NUEVA LÓGICA: Actualizar proceso según estado del stage
         self._update_process_state(uuid, state, error_type, description)
 
         self.session.commit()
@@ -151,7 +165,11 @@ class SqlTransactionTracker(TransactionTracker):
         description: Optional[str],
     ) -> None:
         """Update process state based on stage completion."""
-        process = self.session.query(TxProcess).filter_by(uuid=uuid).one()
+        process = (
+            self.session.query(TxProcess)
+            .filter_by(uuid=uuid)
+            .with_for_update()
+            .one())
 
         if stage_state == TransactionState.REJECTED:
             # Business error -> Stop process
@@ -184,19 +202,27 @@ class SqlTransactionTracker(TransactionTracker):
                     process.state = TransactionState.IN_PROGRESS.value
 
     def _cancel_pending_stages(self, uuid: str) -> None:
-        """Cancel all PENDING stages for a transaction."""
-        pending_stages = (
+        """Cancel all PENDING stages for a transaction.
+
+        Uses optimistic update to avoid locking all stages.
+        """
+        # Update all PENDING stages to CANCELLED (atomic operation)
+        updated_count = (
             self.session.query(TxStage)
             .filter(
                 TxStage.uuid == uuid,
                 TxStage.state == TransactionState.PENDING.value
             )
-            .all()
+            .update(
+                {
+                    "state": TransactionState.CANCELLED.value,
+                    "error_description": "Cancelled due to previous platform rejection"
+                },
+                synchronize_session=False
+            )
         )
 
-        for stage in pending_stages:
-            stage.state = TransactionState.CANCELLED.value
-            stage.error_description = "Cancelled due to previous platform rejection"
+        return updated_count
 
     def _are_all_stages_completed(self, uuid: str) -> bool:
         """Check if all stages for a transaction are completed."""
