@@ -1,9 +1,10 @@
 """Repository for transaction reports."""
 from datetime import datetime
-from sqlalchemy import Sequence, func
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from rpa_tracker.models.tx_process import TxProcess
 from rpa_tracker.models.tx_stage import TxStage
+from typing import Sequence
 
 
 class TransactionReportRepository:
