@@ -8,6 +8,7 @@ class TransactionState(str, Enum):
     TERMINATED = "TERMINATED"          # system error (retryable)
     REJECTED = "REJECTED"      # business error (non-retryable)
     IN_PROGRESS = "IN_PROGRESS"  # in progress
+    CANCELLED = "CANCELLED"    # 👈 NUEVO: cancelled due to previous failure
 
 
 class ErrorType(str, Enum):

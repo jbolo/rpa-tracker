@@ -150,15 +150,7 @@ class SqlTransactionTracker(TransactionTracker):
         error_type: Optional[ErrorType],
         description: Optional[str],
     ) -> None:
-        """Update process state based on stage completion.
-
-        Rules:
-        1. REJECTED stage -> Process becomes REJECTED (stop)
-        2. TERMINATED stage -> Process becomes TERMINATED (retry)
-        3. COMPLETED stage -> Check all stages:
-           - All completed -> Process COMPLETED
-           - Any pending -> Process stays IN_PROGRESS
-        """
+        """Update process state based on stage completion."""
         process = self.session.query(TxProcess).filter_by(uuid=uuid).one()
 
         if stage_state == TransactionState.REJECTED:
@@ -166,6 +158,9 @@ class SqlTransactionTracker(TransactionTracker):
             process.state = TransactionState.REJECTED.value
             process.error_type = error_type.value if error_type else None
             process.error_description = description
+
+            # Cancel all pending stages
+            self._cancel_pending_stages(uuid)
 
         elif stage_state == TransactionState.TERMINATED:
             # System error -> Mark for retry (only if not already rejected)
@@ -187,6 +182,21 @@ class SqlTransactionTracker(TransactionTracker):
                 # Still has pending stages -> Keep as IN_PROGRESS
                 if process.state == TransactionState.PENDING.value:
                     process.state = TransactionState.IN_PROGRESS.value
+
+    def _cancel_pending_stages(self, uuid: str) -> None:
+        """Cancel all PENDING stages for a transaction."""
+        pending_stages = (
+            self.session.query(TxStage)
+            .filter(
+                TxStage.uuid == uuid,
+                TxStage.state == TransactionState.PENDING.value
+            )
+            .all()
+        )
+
+        for stage in pending_stages:
+            stage.state = TransactionState.CANCELLED.value
+            stage.error_description = "Cancelled due to previous platform rejection"
 
     def _are_all_stages_completed(self, uuid: str) -> bool:
         """Check if all stages for a transaction are completed."""

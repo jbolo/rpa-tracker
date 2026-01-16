@@ -3,6 +3,7 @@
 - 3 transactions
 - 3 platforms (A, B, C) with multiple stages
 - retries and business/system errors
+- automatic stage cancellation on rejection
 - final console report
 """
 from datetime import datetime, timedelta
@@ -11,6 +12,7 @@ import logging
 from rpa_tracker.catalog.platform import PlatformDefinition
 from rpa_tracker.catalog.registry import PlatformRegistry
 from rpa_tracker.models.tx_event import TxEvent
+from rpa_tracker.models.tx_stage import TxStage  # 👈 Agregar
 from rpa_tracker.tracking.sql_tracker import SqlTransactionTracker
 from rpa_tracker.tracking.deduplication.registry import DeduplicationRegistry
 from rpa_tracker.domain.execution_result import ExecutionResult
@@ -135,6 +137,24 @@ def test_complex_transaction_flow_with_platform_retry_and_report(session):
             auto_commit=True
         )
 
+    # 👇 NUEVO: Verificar que FE-0001 canceló stages posteriores
+    log.info("\n--- Verifying automatic cancellation for FE-0001 ---")
+    stages_fe0001 = session.query(TxStage).filter_by(uuid=uuids[0]).all()
+
+    for stage_obj in stages_fe0001:
+        log.info("  %s.%s -> %s", stage_obj.system, stage_obj.stage, stage_obj.state)
+
+    # Platform A debe estar REJECTED
+    stage_a = next(s for s in stages_fe0001 if s.system == "A")
+    assert stage_a.state == TransactionState.REJECTED.value
+
+    # Platforms B y C deben estar CANCELLED
+    stages_bc = [s for s in stages_fe0001 if s.system in ("B", "C")]
+    for stage_bc in stages_bc:
+        assert stage_bc.state == TransactionState.CANCELLED.value
+        assert "cancelled" in stage_bc.error_description.lower()
+        log.info("    ✓ %s.%s cancelled automatically", stage_bc.system, stage_bc.stage)
+
     # =========================================================
     # PLATFORM B - Stage 1: "procesar"
     # =========================================================
@@ -142,16 +162,16 @@ def test_complex_transaction_flow_with_platform_retry_and_report(session):
     stage_name = platform.stages[0]  # "procesar"
 
     pending_b_proc = tracker.get_pending_stages(platform.code, stage=stage_name)
-    # 👇 Solo 2: FE-0002 y FE-0003 (FE-0001 rechazado en A)
+    # 👇 Solo 2: FE-0002 y FE-0003 (FE-0001 rechazado en A y sus stages cancelados)
     assert len(pending_b_proc) == 2
 
-    log.info("Pending for Platform B: %s transactions", len(pending_b_proc))
-    for stage in pending_b_proc:
-        data = data_repo.get_by_uuid(stage.uuid)
-        log.info("  - %s (Platform A completed)", data.requerimiento)
+    # 👇 NUEVO: Verificar que FE-0001 NO esté en pending
+    pending_reqs = [data_repo.get_by_uuid(s.uuid).requerimiento for s in pending_b_proc]
+    assert "FE-0001" not in pending_reqs
 
     log.info("=" * 70)
     log.info("PROCESSING PLATFORM B - Stage: %s", stage_name)
+    log.info("Pending: %s transactions (FE-0001 excluded - cancelled)", len(pending_b_proc))
 
     for stage in pending_b_proc:
         data = data_repo.get_by_uuid(stage.uuid)
@@ -192,13 +212,29 @@ def test_complex_transaction_flow_with_platform_retry_and_report(session):
                 auto_commit=True
             )
 
+    # 👇 NUEVO: Verificar que FE-0002 canceló sus stages posteriores
+    log.info("\n--- Verifying automatic cancellation for FE-0002 ---")
+    stages_fe0002 = session.query(TxStage).filter_by(uuid=uuids[1]).all()
+
+    # B.procesar debe estar REJECTED
+    stage_b_proc = next(s for s in stages_fe0002 if s.system == "B" and s.stage == "procesar")
+    assert stage_b_proc.state == TransactionState.REJECTED.value
+
+    # B.confirmar y C.default deben estar CANCELLED
+    stage_b_conf = next(s for s in stages_fe0002 if s.system == "B" and s.stage == "confirmar")
+    stage_c = next(s for s in stages_fe0002 if s.system == "C")
+
+    assert stage_b_conf.state == TransactionState.CANCELLED.value
+    assert stage_c.state == TransactionState.CANCELLED.value
+    log.info("  ✓ B.confirmar and C.default cancelled automatically")
+
     # =========================================================
     # PLATFORM B - Stage 2: "confirmar"
     # =========================================================
     stage_name = platform.stages[1]  # "confirmar"
 
     pending_b_conf = tracker.get_pending_stages(platform.code, stage=stage_name)
-    assert len(pending_b_conf) == 1  # Only TX_OK_ALL (FE-0002 was rejected)
+    assert len(pending_b_conf) == 1  # Only TX_OK_ALL (FE-0002 was rejected and cancelled)
 
     log.info("=" * 70)
     log.info("PROCESSING PLATFORM B - Stage: %s", stage_name)
@@ -223,13 +259,10 @@ def test_complex_transaction_flow_with_platform_retry_and_report(session):
     stage_name = platform.stages[0]  # "default"
 
     pending_c = tracker.get_pending_stages(platform.code, stage=stage_name)
-    # 👇 Solo FE-0003 (FE-0001 y FE-0002 rechazados)
+    # 👇 Solo FE-0003 (FE-0001 y FE-0002 rechazados y cancelados)
     assert len(pending_c) == 1
     data_c = data_repo.get_by_uuid(pending_c[0].uuid)
     assert data_c.requerimiento == "FE-0003"
-
-    log.info("Pending for Platform C: %s transaction", len(pending_c))
-    log.info("  - %s (Platforms A & B completed)", data_c.requerimiento)
 
     log.info("=" * 70)
     log.info("PROCESSING PLATFORM C - Stage: %s", stage_name)
@@ -269,7 +302,7 @@ def test_complex_transaction_flow_with_platform_retry_and_report(session):
     log.info("Total transactions: %s", len(txs))
 
     log.info("\nSUMMARY BY STATE")
-    for state, count in summary:  # 👈 Ya está correcto (tuplas)
+    for state, count in summary:
         log.info("  %-15s : %s", state, count)
 
     log.info("\nSUMMARY BY PLATFORM / STATE")
@@ -293,9 +326,25 @@ def test_complex_transaction_flow_with_platform_retry_and_report(session):
     assert states[uuids[2]] == TransactionState.COMPLETED.value    # FE-0003 (completed all stages)
 
     # Verify stage counts
-    summary_dict = {state: count for state, count in summary}  # Convertir a dict
-    assert summary_dict["REJECTED"] == 2  # 👈 String directo
-    assert summary_dict["COMPLETED"] == 1  # 👈 String directo
+    summary_dict = {state: count for state, count in summary}
+    assert summary_dict["REJECTED"] == 2
+    assert summary_dict["COMPLETED"] == 1
+
+    # 👇 NUEVO: Verificar conteo de stages CANCELLED
+    stage_detail_dict = {}
+    for system, stage, state, count in stage_detail:
+        key = (system, stage, state)
+        stage_detail_dict[key] = count
+
+    # FE-0001: B.procesar, B.confirmar, C.default = 3 CANCELLED
+    # FE-0002: B.confirmar, C.default = 2 CANCELLED
+    # Total = 5 CANCELLED stages
+    cancelled_count = sum(
+        count for (sys, stg, st), count in stage_detail_dict.items()
+        if st == TransactionState.CANCELLED.value
+    )
+    assert cancelled_count == 5, f"Expected 5 cancelled stages, got {cancelled_count}"
+    log.info("\n✓ Verified: %s stages automatically cancelled", cancelled_count)
 
     # Verify intermediate states were tracked
     events_tx3 = (
@@ -307,4 +356,5 @@ def test_complex_transaction_flow_with_platform_retry_and_report(session):
 
     # Should have events from A, B.procesar, B.confirmar, C
     assert len(events_tx3) >= 4
+
     log.info("\n✅ All assertions passed!")
