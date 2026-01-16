@@ -289,7 +289,10 @@ class SqlTransactionTracker(TransactionTracker):
             .filter(
                 TxStage.system == system,
                 TxStage.stage == stage,
-                TxStage.state == TransactionState.PENDING.value,
+                TxStage.state.in_([
+                    TransactionState.PENDING.value,
+                    TransactionState.TERMINATED.value  # 👈 Allow retries from TERMINATED
+                ]),
                 TxProcess.state.in_([
                     TransactionState.PENDING.value,
                     TransactionState.IN_PROGRESS.value,
