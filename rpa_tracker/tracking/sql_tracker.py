@@ -4,6 +4,7 @@ from typing import Any, List, Optional, Tuple
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from rpa_tracker.catalog.registry import PlatformRegistry
+from rpa_tracker.domain.execution_result import ExecutionResult
 from rpa_tracker.enums import TransactionState, ErrorType
 from rpa_tracker.models.tx_event import TxEvent
 from rpa_tracker.models.tx_process import TxProcess
@@ -317,3 +318,53 @@ class SqlTransactionTracker(TransactionTracker):
                 return False
 
         return True
+
+    def complete_stage(
+        self,
+        uuid: str,
+        system: str,
+        result: ExecutionResult,
+        stage: str = DEFAULT_STAGE,
+        auto_commit: bool = False
+    ) -> None:
+        """Complete a stage by logging event and finishing it.
+
+        Convenience method that combines log_event + finish_stage.
+
+        Args:
+            uuid: Transaction UUID
+            system: Platform code
+            result: ExecutionResult with state, error_type, etc.
+            stage: Stage name (default: "default")
+            auto_commit: If True, commits automatically after finishing
+
+        Example:
+            result = ExecutionResult(error_code=0)
+            tracker.complete_stage(uuid, "A", result, stage="validar")
+            session.commit()  # Manual commit
+
+            # Or with auto-commit:
+            tracker.complete_stage(uuid, "A", result, auto_commit=True)
+        """
+        # Log event
+        self.log_event(
+            uuid=uuid,
+            system=system,
+            error_code=result.error_code,
+            description=result.description,
+            stage=stage,
+        )
+
+        # Finish stage
+        self.finish_stage(
+            uuid=uuid,
+            system=system,
+            state=result.state,
+            error_type=result.error_type,
+            description=result.description,
+            stage=stage,
+        )
+
+        # Optional auto-commit
+        if auto_commit:
+            self.session.commit()

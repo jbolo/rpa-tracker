@@ -127,23 +127,13 @@ def test_complex_transaction_flow_with_platform_retry_and_report(session):
             result = ExecutionResult(error_code=0)   # OK
             log.info("  [%s] %s -> SUCCESS", stage_name, data.nombre)
 
-        tracker.log_event(
+        tracker.complete_stage(
             stage.uuid,
             platform.code,
-            result.error_code,
-            result.description,
-            stage=stage_name
-        )
-        tracker.finish_stage(
-            stage.uuid,
-            platform.code,
-            result.state,
-            result.error_type,
-            result.description,
+            result,
             stage=stage_name,
+            auto_commit=True
         )
-
-        session.commit()
 
     # =========================================================
     # PLATFORM B - Stage 1: "procesar"
@@ -170,66 +160,37 @@ def test_complex_transaction_flow_with_platform_retry_and_report(session):
             # attempt 1 -> system error (retry allowed)
             result1 = ExecutionResult(error_code=-2)
             log.info("  [%s] %s -> SYSTEM ERROR attempt 1 (retry)", stage_name, data.nombre)
-            tracker.log_event(
-                stage.uuid,
-                platform.code,
-                result1.error_code,
-                result1.description,
-                stage=stage_name
-            )
-            tracker.finish_stage(
-                stage.uuid,
-                platform.code,
-                result1.state,
-                result1.error_type,
-                result1.description,
-                stage=stage_name,
-            )
 
-            session.commit()
+            tracker.complete_stage(
+                stage.uuid,
+                platform.code,
+                result1,
+                stage=stage_name,
+                auto_commit=True
+            )
 
             # attempt 2 -> business error (retry limit reached)
             result2 = ExecutionResult(error_code=1)
             log.info("  [%s] %s -> BUSINESS ERROR attempt 2 (rejected)", stage_name, data.nombre)
-            tracker.log_event(
+            tracker.complete_stage(
                 stage.uuid,
                 platform.code,
-                result2.error_code,
-                result2.description,
-                stage=stage_name
-            )
-            tracker.finish_stage(
-                stage.uuid,
-                platform.code,
-                result2.state,
-                result2.error_type,
-                result2.description,
+                result2,
                 stage=stage_name,
+                auto_commit=True
             )
-
-            session.commit()
 
         else:
             # TX_OK_ALL
             result = ExecutionResult(error_code=0)
             log.info("  [%s] %s -> SUCCESS", stage_name, data.nombre)
-            tracker.log_event(
+            tracker.complete_stage(
                 stage.uuid,
                 platform.code,
-                result.error_code,
-                result.description,
-                stage=stage_name
-            )
-            tracker.finish_stage(
-                stage.uuid,
-                platform.code,
-                result.state,
-                result.error_type,
-                result.description,
+                result,
                 stage=stage_name,
+                auto_commit=True
             )
-
-            session.commit()
 
     # =========================================================
     # PLATFORM B - Stage 2: "confirmar"
@@ -247,24 +208,13 @@ def test_complex_transaction_flow_with_platform_retry_and_report(session):
 
         result = ExecutionResult(error_code=0)
         log.info("  [%s] %s -> SUCCESS", stage_name, data.nombre)
-
-        tracker.log_event(
+        tracker.complete_stage(
             stage.uuid,
             platform.code,
-            result.error_code,
-            result.description,
-            stage=stage_name
-        )
-        tracker.finish_stage(
-            stage.uuid,
-            platform.code,
-            result.state,
-            result.error_type,
-            result.description,
+            result,
             stage=stage_name,
+            auto_commit=True
         )
-
-        session.commit()
 
     # =========================================================
     # PLATFORM C - Default stage
@@ -291,20 +241,12 @@ def test_complex_transaction_flow_with_platform_retry_and_report(session):
         result = ExecutionResult(error_code=0)
         log.info("  [%s] %s -> SUCCESS", stage_name, data.nombre)
 
-        tracker.log_event(
+        tracker.complete_stage(
             stage.uuid,
             platform.code,
-            result.error_code,
-            result.description,
-            stage=stage_name
-        )
-        tracker.finish_stage(
-            stage.uuid,
-            platform.code,
-            result.state,
-            result.error_type,
-            result.description,
+            result,
             stage=stage_name,
+            auto_commit=False
         )
 
     session.commit()
