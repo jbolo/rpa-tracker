@@ -1,6 +1,6 @@
 """Repository for transaction reports."""
 from datetime import datetime
-from sqlalchemy import func
+from sqlalchemy import Row, func
 from sqlalchemy.orm import Session
 from rpa_tracker.models.tx_process import TxProcess
 from rpa_tracker.models.tx_stage import TxStage
@@ -57,11 +57,11 @@ class TransactionReportRepository:
         self,
         start: datetime,
         end: datetime,
-    ) -> list[tuple[str, str, str, int]]:
+    ) -> list[Row[str, str, str, int]]:
         """Return summary of stages by system, stage name, and state.
 
         Returns:
-            List of tuples: (system, stage, state, count)
+            List of Row tuples: (system, stage, state, count)
         """
         return (
             self.session.query(
