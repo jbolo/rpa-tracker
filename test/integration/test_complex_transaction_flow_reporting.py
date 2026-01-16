@@ -152,7 +152,13 @@ def test_complex_transaction_flow_with_platform_retry_and_report(session):
     stage_name = platform.stages[0]  # "procesar"
 
     pending_b_proc = tracker.get_pending_stages(platform.code, stage=stage_name)
-    assert len(pending_b_proc) == 2  # TX_FAIL_A is excluded
+    # 👇 Solo 2: FE-0002 y FE-0003 (FE-0001 rechazado en A)
+    assert len(pending_b_proc) == 2
+
+    log.info("Pending for Platform B: %s transactions", len(pending_b_proc))
+    for stage in pending_b_proc:
+        data = data_repo.get_by_uuid(stage.uuid)
+        log.info("  - %s (Platform A completed)", data.requerimiento)
 
     log.info("=" * 70)
     log.info("PROCESSING PLATFORM B - Stage: %s", stage_name)
@@ -267,32 +273,39 @@ def test_complex_transaction_flow_with_platform_retry_and_report(session):
     stage_name = platform.stages[0]  # "default"
 
     pending_c = tracker.get_pending_stages(platform.code, stage=stage_name)
-    assert len(pending_c) == 1  # only TX_OK_ALL
+    # 👇 Solo FE-0003 (FE-0001 y FE-0002 rechazados)
+    assert len(pending_c) == 1
+    data_c = data_repo.get_by_uuid(pending_c[0].uuid)
+    assert data_c.requerimiento == "FE-0003"
+
+    log.info("Pending for Platform C: %s transaction", len(pending_c))
+    log.info("  - %s (Platforms A & B completed)", data_c.requerimiento)
 
     log.info("=" * 70)
     log.info("PROCESSING PLATFORM C - Stage: %s", stage_name)
+    log.info("Pending: %s transaction (only FE-0003)", len(pending_c))
 
-    stage = pending_c[0]
-    data = data_repo.get_by_uuid(stage.uuid)
+    for stage in pending_c:
+        data = data_repo.get_by_uuid(stage.uuid)
 
-    result = ExecutionResult(error_code=0)
-    log.info("  [%s] %s -> SUCCESS", stage_name, data.nombre)
+        result = ExecutionResult(error_code=0)
+        log.info("  [%s] %s -> SUCCESS", stage_name, data.nombre)
 
-    tracker.log_event(
-        stage.uuid,
-        platform.code,
-        result.error_code,
-        result.description,
-        stage=stage_name
-    )
-    tracker.finish_stage(
-        stage.uuid,
-        platform.code,
-        result.state,
-        result.error_type,
-        result.description,
-        stage=stage_name,
-    )
+        tracker.log_event(
+            stage.uuid,
+            platform.code,
+            result.error_code,
+            result.description,
+            stage=stage_name
+        )
+        tracker.finish_stage(
+            stage.uuid,
+            platform.code,
+            result.state,
+            result.error_type,
+            result.description,
+            stage=stage_name,
+        )
 
     session.commit()
 

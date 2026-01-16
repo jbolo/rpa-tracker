@@ -3,6 +3,7 @@ import uuid
 from typing import Any, List, Optional, Tuple
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+from rpa_tracker.catalog.registry import PlatformRegistry
 from rpa_tracker.enums import TransactionState, ErrorType
 from rpa_tracker.models.tx_event import TxEvent
 from rpa_tracker.models.tx_process import TxProcess
@@ -229,13 +230,17 @@ class SqlTransactionTracker(TransactionTracker):
                            stage: str = DEFAULT_STAGE) -> List[TxStage]:
         """Returns stages that are eligible for execution for a given system.
 
-        Only stages in PENDING or TERMINATED state are returned, and only if the parent transaction is not REJECTED.
-
-        Args:
-            system: Platform system code
-            stage: Optional stage name to filter by specific stage
+        Only returns stages where:
+        1. Stage is PENDING
+        2. Process is PENDING, IN_PROGRESS, or TERMINATED
+        3. All previous platforms have completed successfully
         """
         policy = RetryPolicyRegistry.get(system)
+
+        # Get platform order
+        platform = PlatformRegistry.get(system)
+        current_order = platform.order
+
         query = (
             self.session.query(TxStage)
             .join(TxProcess, TxStage.uuid == TxProcess.uuid)
@@ -254,4 +259,52 @@ class SqlTransactionTracker(TransactionTracker):
         if policy.max_attempts is not None:
             query = query.filter(TxStage.attempt < policy.max_attempts)
 
-        return query.all()
+        pending_stages = query.all()
+
+        # 👇 NUEVA LÓGICA: Filter by previous platforms completion
+        eligible_stages = []
+
+        for stage_obj in pending_stages:
+            if self._are_previous_platforms_completed(stage_obj.uuid, current_order):
+                eligible_stages.append(stage_obj)
+
+        return eligible_stages
+
+    def _are_previous_platforms_completed(self, uuid: str, current_order: int) -> bool:
+        """Check if all platforms with lower order are completed for this transaction.
+
+        Args:
+            uuid: Transaction UUID
+            current_order: Order of current platform
+
+        Returns:
+            True if all previous platforms completed, False otherwise
+        """
+        if current_order == 1:
+            # First platform, no previous platforms to check
+            return True
+
+        # Get all platforms with lower order
+        previous_platforms = [
+            p for p in PlatformRegistry.all()
+            if p.order < current_order
+        ]
+
+        for prev_platform in previous_platforms:
+            # Check all stages of previous platform
+            for prev_stage_name in prev_platform.stages:
+                stage = (
+                    self.session.query(TxStage)
+                    .filter_by(
+                        uuid=uuid,
+                        system=prev_platform.code,
+                        stage=prev_stage_name
+                    )
+                    .first()
+                )
+
+                # If stage doesn't exist or is not completed, previous platform not done
+                if not stage or stage.state != TransactionState.COMPLETED.value:
+                    return False
+
+        return True
