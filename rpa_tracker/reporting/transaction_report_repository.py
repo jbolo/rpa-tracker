@@ -21,7 +21,7 @@ class TransactionReportRepository:
             .all()
         )
 
-    def summary_by_state(self, start: datetime, end: datetime) -> list[Row[str, int]]:
+    def summary_by_state(self, start: datetime, end: datetime) -> list[Row[tuple[str, int]]]:
         """Returns count of transactions grouped by state."""
         return (
             self.session.query(
@@ -36,7 +36,7 @@ class TransactionReportRepository:
             .all()
         )
 
-    def stage_summary_by_system(self, start: datetime, end: datetime) -> list[Row[str, str, int]]:
+    def stage_summary_by_system(self, start: datetime, end: datetime) -> list[Row[tuple[str, str, int]]]:
         """Returns count of stages per system and state."""
         return (
             self.session.query(
@@ -57,7 +57,7 @@ class TransactionReportRepository:
         self,
         start: datetime,
         end: datetime,
-    ) -> list[Row[str, str, str, int]]:
+    ) -> list[Row[tuple[str, str, str, int]]]:
         """Return summary of stages by system, stage name, and state.
 
         Returns:
