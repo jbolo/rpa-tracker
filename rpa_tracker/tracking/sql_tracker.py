@@ -119,7 +119,7 @@ class SqlTransactionTracker(TransactionTracker):
         error_type: Optional[ErrorType] = None,
         description: Optional[str] = None,
         stage: str = DEFAULT_STAGE
-    ) -> None:
+    ) -> Optional[Tuple[str, Optional[str], Optional[str]]]:
         """Finish a stage and update process state accordingly.
 
         Logic:
@@ -159,6 +159,8 @@ class SqlTransactionTracker(TransactionTracker):
         self._update_process_state(uuid, state, error_type, description)
 
         self.session.commit()
+
+        return (state.value, error_type.value if error_type else None, description)
 
     def _update_process_state(
         self,
@@ -365,7 +367,7 @@ class SqlTransactionTracker(TransactionTracker):
         result: ExecutionResult,
         stage: str = DEFAULT_STAGE,
         auto_commit: bool = False
-    ) -> None:
+    ) -> Optional[Tuple[str, Optional[str], Optional[str]]]:
         """Complete a stage by logging event and finishing it.
 
         Convenience method that combines log_event + finish_stage.
@@ -395,7 +397,7 @@ class SqlTransactionTracker(TransactionTracker):
         )
 
         # Finish stage
-        self.finish_stage(
+        ret = self.finish_stage(
             uuid=uuid,
             system=system,
             state=result.state,
@@ -407,3 +409,5 @@ class SqlTransactionTracker(TransactionTracker):
         # Optional auto-commit
         if auto_commit:
             self.session.commit()
+
+        return ret
