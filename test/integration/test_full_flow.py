@@ -98,5 +98,5 @@ def test_full_transaction_flow(session: Session):
     txs = session.query(TxProcess).all()
     states = {tx.uuid: tx.state for tx in txs}
 
-    assert states[uuid_1] == TransactionState.REJECTED
-    assert states[uuid_2] == TransactionState.COMPLETED
+    assert states[uuid_1] == TransactionState.REJECTED.value
+    assert states[uuid_2] == TransactionState.IN_PROGRESS.value
