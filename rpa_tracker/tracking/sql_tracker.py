@@ -273,6 +273,8 @@ class SqlTransactionTracker(TransactionTracker):
     def _are_previous_platforms_completed(self, uuid: str, current_order: int) -> bool:
         """Check if all platforms with lower order are completed for this transaction.
 
+        A platform is considered "completed" if ALL its stages are COMPLETED.
+
         Args:
             uuid: Transaction UUID
             current_order: Order of current platform
@@ -284,6 +286,11 @@ class SqlTransactionTracker(TransactionTracker):
             # First platform, no previous platforms to check
             return True
 
+        # First, check if process is REJECTED (should not continue)
+        process = self.session.query(TxProcess).filter_by(uuid=uuid).first()
+        if not process or process.state == TransactionState.REJECTED.value:
+            return False
+
         # Get all platforms with lower order
         previous_platforms = [
             p for p in PlatformRegistry.all()
@@ -291,20 +298,22 @@ class SqlTransactionTracker(TransactionTracker):
         ]
 
         for prev_platform in previous_platforms:
-            # Check all stages of previous platform
-            for prev_stage_name in prev_platform.stages:
-                stage = (
-                    self.session.query(TxStage)
-                    .filter_by(
-                        uuid=uuid,
-                        system=prev_platform.code,
-                        stage=prev_stage_name
-                    )
-                    .first()
+            # Count completed stages for this platform
+            completed_count = (
+                self.session.query(func.count(TxStage.uuid))
+                .filter(
+                    TxStage.uuid == uuid,
+                    TxStage.system == prev_platform.code,
+                    TxStage.state == TransactionState.COMPLETED.value
                 )
+                .scalar()
+            )
 
-                # If stage doesn't exist or is not completed, previous platform not done
-                if not stage or stage.state != TransactionState.COMPLETED.value:
-                    return False
+            # All stages of the platform must be completed
+            expected_stages = len(prev_platform.stages)
+
+            if completed_count < expected_stages:
+                # Not all stages completed for this platform
+                return False
 
         return True
